@@ -5,15 +5,13 @@ import getpass
 import syslog
 import re
 import os
+
 import Pashua
 
 __author__ = 'fti'
 
 path_root = os.path.dirname(os.path.realpath(__file__))
-image_path =  path_root + 'KerbMinder_logo.png'
-
-
-# image_path = path_root + '/KerbMinder_logo.png'
+image_path = path_root + '/KerbMinder_logo.png'
 
 class WrongPasswordError(Exception):
     pass
