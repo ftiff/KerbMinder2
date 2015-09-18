@@ -5,13 +5,15 @@ import getpass
 import syslog
 import re
 import os
+import plistlib
 
 import Pashua
 
 __author__ = 'fti'
 
+
 path_root = os.path.dirname(os.path.realpath(__file__))
-image_path = path_root + '/KerbMinder_logo.png'
+plist_path = "/Library/Preferences/com.github.ftiff.KerbMinder2.plist"
 
 class WrongPasswordError(Exception):
     pass
@@ -21,7 +23,6 @@ class WrongUsernameError(Exception):
 
 class RevokedError(Exception):
     pass
-
 
 def get_current_username():
     """Returns the user associated with the LaunchAgent running KerbMinder.py"""
@@ -50,7 +51,7 @@ def domain_dig_check(domain):
     return True
 
 
-def login_dialog(image=image_path):
+def login_dialog(image):
     """Displays login and password prompt using Pashua. Returns login as string."""
 
     message = 'Computer is not bound to AD. Enter your Kerberos credentials:'
@@ -64,53 +65,36 @@ def login_dialog(image=image_path):
     # Image/logo
     img.type = image
     img.path = %s
-    #img.maxwidth = 64
+    img.maxwidth = 128
     img.border = 0
-    #img.x = 00
-    #img.y = 200
 
     # Message
     msg.type = text
     msg.text = %s
-    #msg.x = 80
-    #msg.y = 150
-
-    ## Login Message
-    #loginmsg.type = text
-    #loginmsg.text = Login:
-    ##loginmsg.x = 80
-    ##loginmsg.y = 130
 
     # Login field
     login.type = textfield
     login.label = Login:
     login.default = login
     login.mandatory = 1
-    #login.width = 200
-    #login.x = 82
-    #login.y = 100
+    ''' % (image, message)
 
+    try:
+        realms = g_prefs.get_realms()
+        conf += '''
+            # Add a popup menu
+            realm.type = popup
+            realm.label = Domain:
+            '''
+        for realm in realms:
+            conf = conf + "realm.option = " + realm + "\n"
+    except (KeyError, IOError):
+        conf += '''
+            realm.type = textfield
+            realm.label = Domain:
+            '''
 
-    ## Realm Message
-    #realmmsg.type = text
-    #realmmsg.text = Domain:
-    ##realmmsg.x = 200
-    ##realmmsg.y = 130
-
-    # Add a popup menu
-    realm.type = popup
-    #realm.width = 200
-    realm.label = Domain:
-    #realm.x = 200
-    #realm.y = 100
-    realm.option = EUROPE.ACTELION.COM
-    realm.option = AMERICA.ACTELION.COM
-    realm.option = ASIA.ACTELION.COM
-
-    ## Do not ask again checkbox
-    #dna.type = button
-    #dna.label = Do not use KerbMinder
-
+    conf += '''
     # Default button
     db.type = defaultbutton
     db.label = OK
@@ -120,7 +104,7 @@ def login_dialog(image=image_path):
     # Cancel button
     cb.type = cancelbutton
     cb.label = Cancel
-    ''' % (image, message)
+    '''
 
     # Open dialog and get input
     dialog = Pashua.run(conf)
@@ -130,10 +114,10 @@ def login_dialog(image=image_path):
         log_print('User canceled.')
         sys.exit(0)
 
-    return dialog['login'] + '@' + dialog['realm']
+    return dialog['login'] + '@' + dialog['realm'].upper()
 
 
-def pass_dialog(kid, retry=False, image=image_path):
+def pass_dialog(kid, image, retry=False):
     """Displays password prompt using Pashua. Returns password as string and save checkbox state as 0 or 1.
 
     :returns: (string password, int save)
@@ -199,11 +183,13 @@ def pass_dialog(kid, retry=False, image=image_path):
 
     return dialog['psw'], dialog['save']
 
+
 def display_lockout():
-  """Displays lockout warning."""
-  subprocess.check_output(['osascript', '-e',
-    'display dialog "Your domain account was locked out due to too many incorrect password attempts." with title "Account Locked" with icon 2 buttons {"OK"} default button 1'])
-  sys.exit(1)
+    """Displays lockout warning."""
+    subprocess.check_output(['osascript', '-e',
+                             'display dialog "Your domain account was locked out due to too many incorrect password attempts." with title "Account Locked" with icon 2 buttons {"OK"} default button 1'])
+    sys.exit(1)
+
 
 def todo(message):
     log_print("TODO: " + message)
@@ -211,7 +197,6 @@ def todo(message):
 
 class Principal(object):
     def __init__(self):
-        self.path = path_root + '/kmfiles/principal.txt'
         self.principal = ""
 
         try:
@@ -261,7 +246,7 @@ class Principal(object):
                 return principal
         except(IOError, ValueError):
             log_print("Principal is not cached, asking user…")
-            self.principal = login_dialog()
+            self.principal = login_dialog(g_prefs.get_image_path())
 
             try:
                 self.write()
@@ -285,7 +270,7 @@ class Principal(object):
 
     def write(self):
         try:
-            with open(self.path, 'w') as f:
+            with open(g_prefs.get_principal_path(), 'w') as f:
                 f.write(self.principal)
         except:
             print "Unexpected error:", sys.exc_info()[0]
@@ -293,7 +278,7 @@ class Principal(object):
 
     def read(self):
         try:
-            with open(self.path, 'r') as f:
+            with open(g_prefs.get_principal_path(), 'r') as f:
                 principal = f.read()
             if principal:
                 return principal
@@ -306,12 +291,65 @@ class Principal(object):
     def delete(self):
         """Deletes cache file and removes from memory"""
         try:
-            os.remove(self.path)
+            os.remove(g_prefs.get_principal_path())
         except OSError as e:
             log_print("Error deleting principal cache: " + str(e))
             raise
 
         self.principal = None
+
+
+class Preferences(object):
+    def __init__(self):
+        pass
+
+    def write(self, plistDict, plistPath):
+        try:
+            plistlib.writePlist(plistDict, plistPath)
+        except (ValueError, TypeError, AttributeError) as e:
+            log_print("Error writing Plist: " + str(e))
+            raise
+
+    def read(self, plistPath):
+        ret = ""
+        try:
+            ret = plistlib.readPlist(plistPath)
+        except (ValueError, TypeError, AttributeError) as e:
+            log_print("Error reading Plist: " + str(e))
+            raise
+
+        return ret
+
+    def get_realms(self):
+        try:
+            prefs = g_prefs.read(plist_path)
+            return prefs["realms"]
+        except (IOError, KeyError):
+            log_print("Realms not specified.")
+            raise
+
+    def get_image_path(self):
+        default_image_path = path_root + '/KerbMinder_logo.png'
+        try:
+            prefs = g_prefs.read(plist_path)
+            return prefs["image_path"]
+        except (IOError, KeyError):
+            return default_image_path
+
+    def get_principal_path(self):
+        default_principal_path = path_root + '/kmfiles/principal'
+        try:
+            prefs = g_prefs.read(plist_path)
+            return prefs["principal_path"]
+        except (IOError, KeyError):
+            return default_principal_path
+
+    def set_image_path(self, image_path):
+        raise NotImplementedError
+
+    def write_defaults(self):
+        raise NotImplementedError
+
 
 class Keychain(object):
     def __init__(self):
@@ -437,7 +475,7 @@ class Ticket(object):
         """Asks user the password, runs the kinit command, then saves it if command was sucessful and user asked to
         save to keychain."""
         log_print('Initiating ticket with password')
-        (password, save) = pass_dialog(principal, retry)
+        (password, save) = pass_dialog(principal, g_prefs.get_image_path(), retry)
 
         try:
             domain_dig_check(principal.get_realm())
@@ -523,6 +561,8 @@ def main():
 
             ticket.init(principal)
 
+
+g_prefs = Preferences()
 
 if __name__ == '__main__':
     main()
