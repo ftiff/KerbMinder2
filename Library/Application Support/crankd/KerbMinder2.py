@@ -1,42 +1,86 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+#  -*- coding: utf-8 -*-
+
+"""
+KerbMinder2.py
+
+This script refreshes or renews kerberos tickets based on their status. It checks for
+domain reachability and connectivity before proceeding. If machine is not bound to AD,
+it will prompt the user for a login and store it in cache. For a renewal, the user is
+prompted for their password and allowed only two tries. Two consecutive incorrect
+passwords result in a warning dialog. If an incorrect attempt results in a locked
+account, the user is informed their account is locked.
+
+If the 'Remember password' box is checked, a correct password is saved to the keychain
+and all subsequent renewals use it. Should the password get out of sync with the domain
+password (e.g. after the user changes their password), the keychain will automatically
+remove the old saved password and the user will be prompted to enter one.
+
+This script is meant to be triggered by a launch agent working in conjunction with a
+crankd launch daemon that looks for network state changes.
+
+Last Revised - 01.10.2015
+"""
+
+from __future__ import print_function
+
 import sys
 import subprocess
 import getpass
 import syslog
-import re
 import os
 import plistlib
 
 import Pashua
 
-__author__ = 'fti'
+__author__ = 'Peter Bukowinski (pmbuko@gmail.com), Francois Levaux-Tiffreau (fti@me.com)'
+__credits__ = ["Joe Chilcote",
+               "Graham Gilbert",
+               "Gary Larizza",
+               "Per Olofsson",
+               "Allister Banks",
+               "Tim Sutton"]
 
+__license__ = "GPL"
+__version__ = "2.0"
+__maintainer__ = "Peter Bukowinski"
+__email__ = "pmbuko@gmail.com"
+__status__ = "Development"
 
-path_root = os.path.dirname(os.path.realpath(__file__))
-plist_path = "/Library/Preferences/com.github.ftiff.KerbMinder2.plist"
+PATH_ROOT = os.path.dirname(os.path.realpath(__file__))
+PATH_USER = os.path.expanduser('~/Library/Application Support/crankd')
+PLIST_PATH = "/Library/Preferences/com.github.ftiff.KerbMinder2.plist"
+ADPASSMON_PLIST_PATH = os.path.expanduser('~/Library/Preferences/org.pmbuko.ADPassMon.plist')
+
 
 class WrongPasswordError(Exception):
+    """User has entered wrong password."""
     pass
+
 
 class WrongUsernameError(Exception):
+    """User has entered wrong username."""
     pass
 
+
 class RevokedError(Exception):
+    """Too many unsuccessful passwords."""
     pass
+
 
 def get_current_username():
     """Returns the user associated with the LaunchAgent running KerbMinder.py"""
     return getpass.getuser()
 
 
-def log_print(message, l=True, p=True):
+def log_print(message, _log=True, _print=True):
     """Logs a message and prints it to stdout.
     Optionally disable either logging or stdout.
     """
-    if l:
+    if _log:
         syslog.syslog(syslog.LOG_ALERT, message)
-    if p:
-        print message
+    if _print:
+        print(message)
 
 
 def domain_dig_check(domain):
@@ -118,12 +162,8 @@ def login_dialog(image):
 
 
 def pass_dialog(kid, image, retry=False):
-    """Displays password prompt using Pashua. Returns password as string and save checkbox state as 0 or 1.
-
-    :returns: (string password, int save)
-    :param kid: The full principal name (login@REALM) 
-    :param retry: Change the prompt to ask to try again
-    :param image: Path to logo
+    """Displays password prompt using Pashua.
+    Returns password as string and save checkbox state as 0 or 1.
     """
 
     message = 'Ticket for %s expired. Enter your password to renew:' % kid
@@ -186,16 +226,22 @@ def pass_dialog(kid, image, retry=False):
 
 def display_lockout():
     """Displays lockout warning."""
+
     subprocess.check_output(['osascript', '-e',
                              'display dialog "Your domain account was locked out due to too many incorrect password attempts." with title "Account Locked" with icon 2 buttons {"OK"} default button 1'])
     sys.exit(1)
 
 
-def todo(message):
-    log_print("TODO: " + message)
+def display_password_warning():
+    """Displays lockout warning."""
+
+    subprocess.check_output(['osascript', '-e',
+                             'display dialog "You entered a wrong password twice. Please make sure you are using the correct one." with title "Password Mismatch" with icon 2 buttons {"OK"} default button 1'])
+    sys.exit(1)
 
 
 class Principal(object):
+    """login@REALM.TLD"""
     def __init__(self):
         self.principal = ""
 
@@ -212,12 +258,16 @@ class Principal(object):
         """Returns the Kerberos ID of the current user by searching directory services. If no
         KID is found, either the search path is incorrect or the domain is not accessible."""
 
+        import re
+
         user_path = '/Users/' + get_current_username()
 
         try:
             output = subprocess.check_output(['dsconfigad', '-show'])
             log_print(output)
             if "Active Directory" in output:
+                if not g_prefs.is_kerbminder_enabled_in_adpassmon():
+                    sys.exit(1)
                 pass
             else:
                 raise ValueError("Computer is not bound.")
@@ -233,12 +283,12 @@ class Principal(object):
             log_print('Kerberos Principal is ' + match)
             return match
 
-        except (subprocess.CalledProcessError, ValueError) as e:
-            log_print("Can't find Principal from AD: " + str(e))
+        except (subprocess.CalledProcessError, ValueError) as error:
+            log_print("Can't find Principal from AD: " + str(error))
             raise
 
     def get_from_user(self):
-
+        """Will query cache. If unavailable, will query user, then write to cache."""
         try:
             principal = self.read()
             if principal:
@@ -250,50 +300,60 @@ class Principal(object):
 
             try:
                 self.write()
-            except IOError as e:
-                log_print("Cannot write principal: " + str(e))
+            except IOError as error:
+                log_print("Cannot write principal: " + str(error))
 
         log_print("Principal is: " + str(self))
         return str(self)
 
     def exists(self):
+        """Returns True if principal is defined"""
         if self.principal:
             return True
         else:
             return False
 
     def get_user_id(self):
+        """Returns login"""
         return self.principal.split('@')[0]
 
     def get_realm(self):
+        """Returns REALM.TLD"""
         return self.principal.split('@')[1]
 
     def write(self):
+        """Writes Principal to cache"""
+        path = g_prefs.get_principal_path()
+        if not os.path.exists(os.path.dirname(path)):
+            os.makedirs(os.path.dirname(path))
+
         try:
-            with open(g_prefs.get_principal_path(), 'w') as f:
-                f.write(self.principal)
-        except:
-            print "Unexpected error:", sys.exc_info()[0]
+            with open(path, 'w') as _file:
+                _file.write(self.principal)
+        except IOError as error:
+            log_print("Unexpected error: " + str(error))
             raise
 
-    def read(self):
+    @staticmethod
+    def read():
+        """Returns principal from cache"""
         try:
-            with open(g_prefs.get_principal_path(), 'r') as f:
-                principal = f.read()
+            with open(g_prefs.get_principal_path(), 'r') as _file:
+                principal = _file.read()
             if principal:
                 return principal
             else:
                 raise ValueError("Cannot read principal from cache")
-        except (IOError, ValueError) as e:
-            log_print("Warning: " + str(e))
+        except (IOError, ValueError) as error:
+            log_print("Warning: " + str(error))
             raise
 
     def delete(self):
         """Deletes cache file and removes from memory"""
         try:
             os.remove(g_prefs.get_principal_path())
-        except OSError as e:
-            log_print("Error deleting principal cache: " + str(e))
+        except OSError as error:
+            log_print("Error deleting principal cache: " + str(error))
             raise
 
         self.principal = None
@@ -303,46 +363,75 @@ class Preferences(object):
     def __init__(self):
         pass
 
-    def write(self, plistDict, plistPath):
+    @staticmethod
+    def write(_plist_dict, _plist_path):
         try:
-            plistlib.writePlist(plistDict, plistPath)
-        except (ValueError, TypeError, AttributeError) as e:
-            log_print("Error writing Plist: " + str(e))
+            plistlib.writePlist(_plist_dict, _plist_path)
+        except (ValueError, TypeError, AttributeError) as error:
+            log_print("Error writing Plist: " + str(error))
             raise
 
-    def read(self, plistPath):
+    @staticmethod
+    def read(_plist_path):
         ret = ""
         try:
-            ret = plistlib.readPlist(plistPath)
-        except (ValueError, TypeError, AttributeError) as e:
-            log_print("Error reading Plist: " + str(e))
+            ret = plistlib.readPlist(_plist_path)
+        except (ValueError, TypeError, AttributeError) as error:
+            log_print("Error reading Plist: " + str(error))
             raise
+        else:
+            return ret
 
-        return ret
-
-    def get_realms(self):
+    @staticmethod
+    def get_realms():
         try:
-            prefs = g_prefs.read(plist_path)
+            prefs = g_prefs.read(PLIST_PATH)
             return prefs["realms"]
         except (IOError, KeyError):
             log_print("Realms not specified.")
             raise
 
-    def get_image_path(self):
-        default_image_path = path_root + '/KerbMinder_logo.png'
+    @staticmethod
+    def get_image_path():
+        default_image_path = PATH_ROOT + '/KerbMinder_logo.png'
         try:
-            prefs = g_prefs.read(plist_path)
+            prefs = g_prefs.read(PLIST_PATH)
             return prefs["image_path"]
         except (IOError, KeyError):
             return default_image_path
 
-    def get_principal_path(self):
-        default_principal_path = path_root + '/kmfiles/principal'
+    @staticmethod
+    def get_principal_path():
+        default_principal_path = PATH_USER + '/kmfiles/principal'
         try:
-            prefs = g_prefs.read(plist_path)
+            prefs = g_prefs.read(PLIST_PATH)
             return prefs["principal_path"]
         except (IOError, KeyError):
             return default_principal_path
+
+    @staticmethod
+    def is_kerbminder_enabled_in_adpassmon():
+        """Check if ADPassMon has KerbMinder disabled
+        Will return true if cannot find ADPassMon plist or if it is enabled.
+        """
+        if not os.path.isfile(ADPASSMON_PLIST_PATH):
+            log_print("ADPassMon: Can't find settings -- returning ENABLED")
+            return True
+        else:
+            try:
+                subprocess.call(['plutil', '-convert', 'xml1', ADPASSMON_PLIST_PATH])
+                settings = plistlib.readPlist(ADPASSMON_PLIST_PATH)
+                enabled = settings['enableKerbMinder']
+            except subprocess.CalledProcessError:
+                log_print("ADPassMon: Couldn't convert plist to XML -- Returning ENABLED")
+                return True
+            except KeyError:
+                log_print("ADPassMon: Can't find key for KerbMinder -- Returning ENABLED")
+                return True
+
+            if not enabled:
+                log_print("ADPassMon: KerbMinder is disabled in ADPassMon settings")
+                return False
 
     def set_image_path(self, image_path):
         raise NotImplementedError
@@ -377,7 +466,8 @@ class Keychain(object):
 
     @staticmethod
     def store(principal, password):
-        """Saves password to keychain for use by kinit. We don't use the flag -U (update) because it prompts the user to
+        """Saves password to keychain for use by kinit.
+        We don't use the flag -U (update) because it prompts the user to
         authorize the security process. Instead, it's safer to delete and store.
         """
 
@@ -397,8 +487,8 @@ class Keychain(object):
             log_print('Added password to keychain.')
             return True
 
-        except subprocess.CalledProcessError as e:
-            log_print('Failed adding password to keychain: ' + str(e))
+        except subprocess.CalledProcessError as error:
+            log_print('Failed adding password to keychain: ' + str(error))
             return False
 
     @staticmethod
@@ -418,8 +508,8 @@ class Keychain(object):
             log_print('Deleted Keychain entry.')
             return True
 
-        except subprocess.CalledProcessError as e:
-            log_print('Failed to delete keychain entry: ' + str(e))
+        except subprocess.CalledProcessError as error:
+            log_print('Failed to delete keychain entry: ' + str(error))
             return False
 
 
@@ -451,7 +541,7 @@ class Ticket(object):
             return True
         except subprocess.CalledProcessError:
             log_print("Can't refresh ticket.")
-            return False
+            raise
 
     @staticmethod
     def init(principal):
@@ -465,21 +555,19 @@ class Ticket(object):
                                      str(principal)]
                                     )
             log_print("Ticket initiation OK")
-            return True
-        except subprocess.CalledProcessError as e:
-            log_print("Error initiating ticket: " + str(e))
+        except subprocess.CalledProcessError as error:
+            log_print("Error initiating ticket: " + str(error))
             raise
 
     @staticmethod
     def init_password(principal, keychain, retry=False):
-        """Asks user the password, runs the kinit command, then saves it if command was sucessful and user asked to
+        """Asks user the password, runs the kinit command,
+        then saves it if command was sucessful and user asked to
         save to keychain."""
         log_print('Initiating ticket with password')
         (password, save) = pass_dialog(principal, g_prefs.get_image_path(), retry)
 
         try:
-            domain_dig_check(principal.get_realm())
-
             renew1 = subprocess.Popen(['echo', password], stdout=subprocess.PIPE)
             renew2 = subprocess.Popen(['kinit',
                                        '-l', '10h',
@@ -507,8 +595,11 @@ class Ticket(object):
             log_print("Ticket initiation OK")
             return True
 
-        except (subprocess.CalledProcessError, WrongPasswordError, RevokedError, WrongUsernameError) as e:
-            log_print("Error initiating ticket: " + str(e))
+        except (subprocess.CalledProcessError,
+                WrongPasswordError,
+                RevokedError,
+                WrongUsernameError) as error:
+            log_print("Error initiating ticket: " + str(error))
             raise
 
 
@@ -517,49 +608,51 @@ def main():
     principal = Principal()
     keychain = Keychain()
 
+    if not domain_dig_check(principal.get_realm()):
+        sys.exit(0)
+
     if ticket.is_present():
-        ticket.refresh(principal)
-    else:
-        if principal.exists():
-            if keychain.exists(principal):
-                try:
-                    ticket.init(principal)
-                except (subprocess.CalledProcessError, ValueError):
-                    log_print('Error Initiating Kerberos')
-            else:
-                retry = False
-                while True:
-                    try:
-                        ticket.init_password(principal, keychain, retry)
-                    except WrongPasswordError:
-                        if retry == False:
-                            retry = True
-                            log_print("Password mismatch")
-                            continue
-                        else:
-                            log_print("Twice a password error. Exiting.")
-                            sys.exit(1)
-
-                    except RevokedError:
-                        log_print("Ticket is revoked. Exiting.")
-                        display_lockout()
-                        sys.exit(1)
-
-                    except WrongUsernameError:
-                        log_print("Wrong Username")
-                        principal.delete()
-                        principal.get_from_user ()
-                        continue
-
-
-                    break
+        try:
+            ticket.refresh(principal)
+        except subprocess.CalledProcessError as error:
+            log_print("Error: " + str(error))
         else:
-            try:
-                principal.read()
-            except(IOError, ValueError):
-                todo("Ask for Principal")
+            sys.exit(0)
 
+    if keychain.exists(principal):
+        try:
             ticket.init(principal)
+        except (subprocess.CalledProcessError, ValueError):
+            log_print('Error Initiating Kerberos')
+            sys.exit(1)
+        else:
+            sys.exit(0)
+
+    else:
+        retry = False
+        while True:
+            try:
+                ticket.init_password(principal, keychain, retry)
+            except WrongPasswordError:
+                if not retry:
+                    retry = True
+                    log_print("Password mismatch")
+                    continue
+                else:
+                    log_print("Twice a password error. Exiting.")
+                    display_password_warning()
+
+            except RevokedError:
+                log_print("Ticket is revoked. Exiting.")
+                display_lockout()
+
+            except WrongUsernameError:
+                log_print("Wrong Username")
+                principal.delete()
+                principal.get_from_user()
+                continue
+            else:
+                break
 
 
 g_prefs = Preferences()
