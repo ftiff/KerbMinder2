@@ -47,13 +47,15 @@ This script's main purpose is to determine if any ethernet interface (e.g. en0, 
 
 If an interface with an IP address is found, it touches a trigger file (```/Library/Application Support/crankd/kmfiles/trigger```) that the following LaunchAgent watches. This handoff in duties is necessary because this script runs as a LaunchDaemons in the root context, but Kerberos ticket renewals must be done in the user's context.
 
-### KerbMinder.py
+### KerbMinder2.py
 
 This script runs as a triggered LaunchAgent. It refreshes or renews Kerberos tickets based on their discovered status. Before attempting a renewal, it first checks for domain reachability.
 
 If a ticket is refreshable and non-expired, it is refreshed silently. If a ticket is expired or nor present, the script checks if the password has been saved in the keychain. If a keychain entry exists, the saved password is used to retrieve a ticket. If an entry does not exist, the user is prompted for their password (using a secure entry dialog box) and allowed two tries to reduce the chances of account lockout. Two incorrect password attempts results in a warning dialog. If an incorrect attempt results in a locked account, the user is informed that their account is locked.
 
 If the password is correct the ticket is renewed and, if the user has checked the **_Remember this password in my keychain_** option, that password is saved to the keychain so future renewals can occur without user interaction. If the password becomes out of sync with the domain -- e.g. after the domain password has been changed -- then the stored keychain item is purged and the user is prompted for their password.
+
+![KerbMinder2 UML](installer_components/KerbMinder2_UML.png "KerbMinder2 UML")
 
 ### Pashua.py and Pashua.app
 
