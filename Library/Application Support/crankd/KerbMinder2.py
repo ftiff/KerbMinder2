@@ -58,6 +58,11 @@ class WrongPasswordError(Exception):
     pass
 
 
+class PasswordExpiredError(Exception):
+    """Password is expired."""
+    pass
+
+
 class WrongUsernameError(Exception):
     """User has entered wrong username."""
     pass
@@ -224,20 +229,20 @@ def pass_dialog(kid, image, retry=False):
     return dialog['psw'], dialog['save']
 
 
-def display_lockout():
-    """Displays lockout warning."""
+def exit_dialog(message, title, log):
+    """Display error to user, logs it and exit with error."""
 
-    subprocess.check_output(['osascript', '-e',
-                             'display dialog "Your domain account was locked out due to too many incorrect password attempts." with title "Account Locked" with icon 2 buttons {"OK"} default button 1'])
-    sys.exit(1)
+    try:
+        subprocess.check_output(['osascript', '-e',
+                                 'display dialog "' + message + '" with title "' +
+                                 title + '" with icon 2 buttons {"OK"} default button 1'])
 
+    except subprocess.CalledProcessError as error:
+        log_print("Error displaying exit_dialog: " + str(error))
 
-def display_password_warning():
-    """Displays lockout warning."""
-
-    subprocess.check_output(['osascript', '-e',
-                             'display dialog "You entered a wrong password twice. Please make sure you are using the correct one." with title "Password Mismatch" with icon 2 buttons {"OK"} default button 1'])
-    sys.exit(1)
+    finally:
+        log_print(log)
+        sys.exit(1)
 
 
 class Principal(object):
@@ -544,41 +549,42 @@ class Ticket(object):
             raise
 
     @staticmethod
-    def init(principal):
-        log_print('Initiating ticket')
-        try:
-            domain_dig_check(principal.get_realm())
-            subprocess.check_output(['kinit',
-                                     '-l',
-                                     '10h',
-                                     '--renewable',
-                                     str(principal)]
-                                    )
-            log_print("Ticket initiation OK")
-        except subprocess.CalledProcessError as error:
-            log_print("Error initiating ticket: " + str(error))
-            raise
+    def kinit(principal, keychain, retry=False):
+        """Calls kinit to initialize the Kerberos Ticket. Will use
+        keychain if available, otherwise will ask user the password,
+        optionally saving it to the keychain.
+        """
 
-    @staticmethod
-    def init_password(principal, keychain, retry=False):
-        """Asks user the password, runs the kinit command,
-        then saves it if command was sucessful and user asked to
-        save to keychain."""
-        log_print('Initiating ticket with password')
-        (password, save) = pass_dialog(principal, g_prefs.get_image_path(), retry)
+        (password, save) = ("", 0)
 
         try:
-            renew1 = subprocess.Popen(['echo', password], stdout=subprocess.PIPE)
-            renew2 = subprocess.Popen(['kinit',
-                                       '-l', '10h',
-                                       '--renewable',
-                                       '--password-file=STDIN',
-                                       str(principal)],
-                                      stderr=subprocess.PIPE,
-                                      stdin=renew1.stdout,
-                                      stdout=subprocess.PIPE)
-            renew1.stdout.close()
-            out = renew2.communicate()[1]
+            if keychain.exists(principal):
+                log_print('Initiating ticket with Keychain')
+
+                _renew = subprocess.Popen(['kinit',
+                                           '-l', '10h',
+                                           '--renewable',
+                                           str(principal)],
+                                          stderr=subprocess.PIPE,
+                                          stdout=subprocess.PIPE)
+                out = _renew.communicate()[1]
+            else:
+                log_print('Initiating ticket with password')
+                (password, save) = pass_dialog(principal, g_prefs.get_image_path(), retry)
+                _renew1 = subprocess.Popen(['echo', password], stdout=subprocess.PIPE)
+                _renew2 = subprocess.Popen(['kinit',
+                                            '-l', '10h',
+                                            '--renewable',
+                                            '--password-file=STDIN',
+                                            str(principal)],
+                                           stderr=subprocess.PIPE,
+                                           stdin=_renew1.stdout,
+                                           stdout=subprocess.PIPE)
+                _renew1.stdout.close()
+                out = _renew2.communicate()[1]
+
+            if "expired" in out:
+                raise PasswordExpiredError("Password Expired")
 
             if "incorrect" in out:
                 raise WrongPasswordError("Wrong password")
@@ -596,6 +602,7 @@ class Ticket(object):
             return True
 
         except (subprocess.CalledProcessError,
+                PasswordExpiredError,
                 WrongPasswordError,
                 RevokedError,
                 WrongUsernameError) as error:
@@ -619,38 +626,41 @@ def main():
         else:
             sys.exit(0)
 
-    if keychain.exists(principal):
-        try:
-            ticket.init(principal)
-        except (subprocess.CalledProcessError, ValueError):
-            log_print('Error Initiating Kerberos')
-            sys.exit(1)
-        else:
-            sys.exit(0)
-
     else:
         retry = False
         while True:
             try:
-                ticket.init_password(principal, keychain, retry)
+                ticket.kinit(principal, keychain, retry)
+
             except WrongPasswordError:
                 if not retry:
                     retry = True
                     log_print("Password mismatch")
                     continue
                 else:
-                    log_print("Twice a password error. Exiting.")
-                    display_password_warning()
+                    _message = "You entered a wrong password twice. Please make sure you are using the correct one."
+                    _title = "Password Error"
+                    _log = "Twice a password error. Exiting."
+                    exit_dialog(_message, _title, _log)
+
+            except PasswordExpiredError:
+                _message = "Your password has expired. Please change it and retry."
+                _title = "Password expired"
+                _log = "Password is expired. Exiting."
+                exit_dialog(_message, _title, _log)
 
             except RevokedError:
-                log_print("Ticket is revoked. Exiting.")
-                display_lockout()
+                _message = "Your domain account was locked out due to too many incorrect password attempts."
+                _title = "Account Lockout"
+                _log = "Ticket is revoked. Exiting."
+                exit_dialog(_message, _title, _log)
 
             except WrongUsernameError:
                 log_print("Wrong Username")
                 principal.delete()
                 principal.get_from_user()
                 continue
+
             else:
                 break
 
