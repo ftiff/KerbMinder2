@@ -19,26 +19,111 @@
     </section>
 
     <section class="main-content">
-      <h3>
-<a id="welcome" class="anchor" href="#welcome" aria-hidden="true"><span class="octicon octicon-link"></span></a>Welcome</h3>
+      <h1>
+<a id="kerbminder" class="anchor" href="#kerbminder" aria-hidden="true"><span class="octicon octicon-link"></span></a>KerbMinder</h1>
 
-<p>KerbMinder is a tool that takes care of Kerberos behind the scenes.
-If your computer is bound to AD, this is already taken care of. But Apple's implementation doesn't work well with ticket renewal. I'm not an expert of this, ask <a href="https://github.com/pmbuko" class="user-mention">@pmbuko</a> instead.
-But when you computer is not bound to AD, you need to use Ticket Viewer.app. This tool is IMHO simple but misleading for the user. And it requires some intervention each time the ticket expires.</p>
+<p><img src="installer_components/KerbMinder_logo.png" alt="KerbMinder logo" title="KerbMinder icon"></p>
 
-<h3>
-<a id="meet-kerbminder2" class="anchor" href="#meet-kerbminder2" aria-hidden="true"><span class="octicon octicon-link"></span></a>Meet KerbMinder2.</h3>
+<p><strong>KerbMinder</strong> is a tool for Mac OS X that keeps a logged-in user's Kerberos ticket current by attempting to renew or refresh it automatically any time the network state changes. It only presents a UI if it needs the user to supply a login or a password. It is designed for users who :</p>
 
-<p>This tool will ask the user for principal and/or password, and take care of the init and renewal of the ticket each time it detects a network change. It will handle nicely AD errors.</p>
+<ul>
+<li>has network-authenticated mobile accounts and often work off of corporate networks via VPN;</li>
+<li>or needs to leverage Kerberos SSO without having to bind the machine to a directory.
+<img src="installer_components/KerbMinder2_login.png" alt="KerbMinder login" title="KerbMinder login dialog">
+<img src="installer_components/dialog.png" alt="KerbMinder dialog" title="KerbMinder dialog">
+</li>
+</ul>
 
-<h3>
-<a id="why-the-2-in-kerbminder2-" class="anchor" href="#why-the-2-in-kerbminder2-" aria-hidden="true"><span class="octicon octicon-link"></span></a>Why the '2' in KerbMinder2 ?</h3>
+<p>The password can be saved to the keychain so all subsequent renewals can use it. Should the saved password get out of sync with the domain — e.g. after the user changes their password — the keychain will automatically remove the old saved password and the user will be prompted to enter one.</p>
+
+<h2>
+<a id="why-the-2-in-kerbminder2-" class="anchor" href="#why-the-2-in-kerbminder2-" aria-hidden="true"><span class="octicon octicon-link"></span></a>Why the '2' in KerbMinder2 ?</h2>
 
 <p>This is a fork and a rewrite of <a href="https://github.com/pmbuko" class="user-mention">@pmbuko</a> <a href="http://github.com/pmbuko/KerbMinder">KerbMinder</a>. My intent is to make it backward compatible and do a Pull Request. 
-Originally, KerbMinder needed the computer to be bound. I personally think this is a thing from the past, so I added the possibility to specify a principal. After hours of struggling with the code to make, I figured out it would be much faster to do a complete rewrite. I don't intend to correct the bugs or enhance pmbuko's version. </p>
+Originally, KerbMinder needed the computer to be bound. I personally think this is a thing from the past, so I added the possibility to specify a principal. After hours of struggling with the code to make, I figured out it would be much faster to do a complete rewrite. I don't intend to correct the bugs or enhance <a href="https://github.com/pmbuko" class="user-mention">@pmbuko</a>'s version. </p>
 
 <h3>
-<a id="whats-next-" class="anchor" href="#whats-next-" aria-hidden="true"><span class="octicon octicon-link"></span></a>What's next ?</h3>
+<a id="acknowledgements" class="anchor" href="#acknowledgements" aria-hidden="true"><span class="octicon octicon-link"></span></a>Acknowledgements</h3>
+
+<p>Portions of KerbMinder were inspired by code written by these fine humans (links point to the inspiring code, where possible):</p>
+
+<ul>
+<li>
+<a href="https://github.com/pmbuko" class="user-mention">@pmbuko</a> - original author of KerbMinder</li>
+<li>
+<a href="https://github.com/ftiff" class="user-mention">@ftiff</a> - author of KerbMinder2</li>
+<li><a href="https://github.com/chilcote">Joe Chilcote</a></li>
+<li><a href="http://grahamgilbert.com/blog/2013/07/12/using-crankd-to-react-to-network-events/">Graham Gilbert</a></li>
+<li><a href="https://github.com/glarizza/scripts/blob/master/python/RefactoredCrankTools.py">Gary Larizza</a></li>
+<li><a href="https://github.com/MagerValp/Scripted-Mac-Package-Creation/blob/master/scripts/postinstall">Per Olofsson</a></li>
+</ul>
+
+<p>I'd also like to thank</p>
+
+<ul>
+<li>
+<a href="https://twitter.com/Sacrilicious/status/543451138239258624">Allister Banks</a> for pointing out an effective dig command to test for domain reachability.</li>
+<li>
+<a href="http://twitter.com/tvsutton/status/544099669270605824">Tim Sutton</a> for telling me about Pashua.</li>
+</ul>
+
+<h2>
+<a id="requirements" class="anchor" href="#requirements" aria-hidden="true"><span class="octicon octicon-link"></span></a>Requirements</h2>
+
+<ul>
+<li>Mac OS X 10.8.5 or newer (compatible with 10.11.x)</li>
+<li>Python 2.7 (part of OS)</li>
+<li>crankd (PyMacAdmin, included)</li>
+<li>Pashua (included)</li>
+</ul>
+
+<h2>
+<a id="how-it-works" class="anchor" href="#how-it-works" aria-hidden="true"><span class="octicon octicon-link"></span></a>How It Works</h2>
+
+<p>KerbMinder logs its activity to the system log. You can open up Console.app and filter for “KerbMinder” to see what it’s up to. You may want to make a network change (e.g. toggle off/on your wi-fi interface) to force it to act.</p>
+
+<p>KerbMinder has a few components that operate in tandem.</p>
+
+<h3>
+<a id="crankdpy" class="anchor" href="#crankdpy" aria-hidden="true"><span class="octicon octicon-link"></span></a>crankd.py</h3>
+
+<p>Part of the <a href="https://github.com/acdha/pymacadmin">PyMacAdmin</a> project, crankd is an always-on LaunchDaemon configured to look for network changes. Specifically, it monitors the System Configuration framework's <code>State:/Network/Global/IPv4</code> subkey, which blips any time an ethernet interface gains or loses an IPv4 address. When a change is detected, it calls the following script.</p>
+
+<h3>
+<a id="cranktoolspy" class="anchor" href="#cranktoolspy" aria-hidden="true"><span class="octicon octicon-link"></span></a>CrankTools.py</h3>
+
+<p>This script's main purpose is to determine if any ethernet interface (e.g. en0, en1, etc.) has an ip address. When called, it first sleeps for 30 seconds, allowing sufficient time for a wi-fi or VPN connection to be established. Then (with the help of <code>networksetup -listnetworkserviceorder</code>) it gets a list of ethernet interfaces in service priority order and goes down that list looking for the first one with an ip address.</p>
+
+<p>If an interface with an IP address is found, it touches a trigger file (<code>/Library/Application Support/crankd/kmfiles/trigger</code>) that the following LaunchAgent watches. This handoff in duties is necessary because this script runs as a LaunchDaemons in the root context, but Kerberos ticket renewals must be done in the user's context.</p>
+
+<h3>
+<a id="kerbminder2py" class="anchor" href="#kerbminder2py" aria-hidden="true"><span class="octicon octicon-link"></span></a>KerbMinder2.py</h3>
+
+<p>This script runs as a triggered User LaunchAgent. </p>
+
+<p><img src="installer_components/KerbMinder2_UML.png" alt="KerbMinder2 UML" title="KerbMinder2 UML"></p>
+
+<h3>
+<a id="pashuapy-and-pashuaapp" class="anchor" href="#pashuapy-and-pashuaapp" aria-hidden="true"><span class="octicon octicon-link"></span></a>Pashua.py and Pashua.app</h3>
+
+<p><a href="http://www.bluem.net/en/mac/pashua/">Pashua</a> is a tool for creating native Aqua dialog windows. KerbMinder uses it to display a password prompt window with a checkbox to optionally save the password.</p>
+
+<h2>
+<a id="installation" class="anchor" href="#installation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Installation</h2>
+
+<p>Download the package and run it. No reboot or logout is necessary, but admin privileges are required.</p>
+
+<p>The KerbMinder.pkgproj bundle in this repo is an installer builder project for the free <a href="http://s.sudre.free.fr/Software/Packages/about.html">Packages</a> app. If you'd like to build your own .pkg installer, just download the app, double-click on the project file, and then build and run the installer.</p>
+
+<p>If you want to install manually, check the <a href="https://github.com/ftiff/KerbMinder2/wiki/Manual-Installation">Wiki</a></p>
+
+<h2>
+<a id="adpassmon-integration" class="anchor" href="#adpassmon-integration" aria-hidden="true"><span class="octicon octicon-link"></span></a>ADPassMon Integration</h2>
+
+<p>The latest release of my <a href="http://yourmacguy.wordpress.com/ADPassMon">ADPassMon</a> software lets users enable/disable KerbMinder via a menu item.</p>
+
+<h2>
+<a id="whats-next-" class="anchor" href="#whats-next-" aria-hidden="true"><span class="octicon octicon-link"></span></a>What's next ?</h2>
 
 <p>I want to rewrite this tool again, to use Apple's Frameworks instead of CLI tools.</p>
 
@@ -50,6 +135,16 @@ Originally, KerbMinder needed the computer to be bound. I personally think this 
 
     </section>
 
-  
+            <script type="text/javascript">
+            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+          </script>
+          <script type="text/javascript">
+            try {
+              var pageTracker = _gat._getTracker("UA-68588325-1");
+            pageTracker._trackPageview();
+            } catch(err) {}
+          </script>
+
   </body>
 </html>
