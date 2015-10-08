@@ -2,18 +2,25 @@
 
 ![KerbMinder logo](installer_components/KerbMinder_logo.png "KerbMinder icon")
 
-**KerbMinder** is a tool for Mac OS X that keeps a logged-in user's Kerberos ticket current by attempting to renew or refresh it automatically any time the network state changes. It only presents a UI if it needs the user to supply a password.
+**KerbMinder** is a tool for Mac OS X that keeps a logged-in user's Kerberos ticket current by attempting to renew or refresh it automatically any time the network state changes. It only presents a UI if it needs the user to supply a login or a password. It is designed for users who :
+- has network-authenticated mobile accounts and often work off of corporate networks via VPN;
+- or needs to leverage Kerberos SSO without having to bind the machine to a directory.
 
 ![KerbMinder dialog](installer_components/dialog.png "KerbMinder dialog")
 
 The password can be saved to the keychain so all subsequent renewals can use it. Should the saved password get out of sync with the domain — e.g. after the user changes their password — the keychain will automatically remove the old saved password and the user will be prompted to enter one.
 
-KerbMinder is designed for users with network-authenticated mobile accounts who often work off of corporate networks via VPN.
+## Why the '2' in KerbMinder2 ?
+This is a fork and a rewrite of @pmbuko [KerbMinder](http://github.com/pmbuko/KerbMinder). My intent is to make it backward compatible and do a Pull Request. 
+Originally, KerbMinder needed the computer to be bound. I personally think this is a thing from the past, so I added the possibility to specify a principal. After hours of struggling with the code to make, I figured out it would be much faster to do a complete rewrite. I don't intend to correct the bugs or enhance @pmbuko's version. 
+
 
 ### Acknowledgements
 
 Portions of KerbMinder were inspired by code written by these fine humans (links point to the inspiring code, where possible):
 
+* @pmbuko - original author of KerbMinder
+* @ftiff - author of KerbMinder2
 * [Joe Chilcote](https://github.com/chilcote)
 * [Graham Gilbert](http://grahamgilbert.com/blog/2013/07/12/using-crankd-to-react-to-network-events/)
 * [Gary Larizza](https://github.com/glarizza/scripts/blob/master/python/RefactoredCrankTools.py)
@@ -26,14 +33,14 @@ I'd also like to thank
 
 ## Requirements
 
-* Mac OS X 10.8.5 or newer (compatible with 10.10.x)
+* Mac OS X 10.8.5 or newer (compatible with 10.11.x)
 * Python 2.7 (part of OS)
 * crankd (PyMacAdmin, included)
 * Pashua (included)
 
 ## How It Works
 
-KerbMinder logs its activity to the system log. You can open up Console.app and filter for “kerbminder” to see what it’s up to. You may want to make a network change (e.g. toggle off/on your wi-fi interface) to force it to act.
+KerbMinder logs its activity to the system log. You can open up Console.app and filter for “KerbMinder” to see what it’s up to. You may want to make a network change (e.g. toggle off/on your wi-fi interface) to force it to act.
 
 KerbMinder has a few components that operate in tandem.
 
@@ -49,11 +56,7 @@ If an interface with an IP address is found, it touches a trigger file (```/Libr
 
 ### KerbMinder2.py
 
-This script runs as a triggered LaunchAgent. It refreshes or renews Kerberos tickets based on their discovered status. Before attempting a renewal, it first checks for domain reachability.
-
-If a ticket is refreshable and non-expired, it is refreshed silently. If a ticket is expired or nor present, the script checks if the password has been saved in the keychain. If a keychain entry exists, the saved password is used to retrieve a ticket. If an entry does not exist, the user is prompted for their password (using a secure entry dialog box) and allowed two tries to reduce the chances of account lockout. Two incorrect password attempts results in a warning dialog. If an incorrect attempt results in a locked account, the user is informed that their account is locked.
-
-If the password is correct the ticket is renewed and, if the user has checked the **_Remember this password in my keychain_** option, that password is saved to the keychain so future renewals can occur without user interaction. If the password becomes out of sync with the domain -- e.g. after the domain password has been changed -- then the stored keychain item is purged and the user is prompted for their password.
+This script runs as a triggered User LaunchAgent. 
 
 ![KerbMinder2 UML](installer_components/KerbMinder2_UML.png "KerbMinder2 UML")
 
@@ -63,56 +66,16 @@ If the password is correct the ticket is renewed and, if the user has checked th
 
 ## Installation
 
-### The simple way
-
-Download the [KerbMinder release package](https://github.com/pmbuko/KerbMinder/releases/download/v1.0rc2/KerbMinder.v1.0rc2.pkg.zip) and run it. No reboot or logout is necessary, but admin privileges are required.
+Download the package and run it. No reboot or logout is necessary, but admin privileges are required.
 
 The KerbMinder.pkgproj bundle in this repo is an installer builder project for the free [Packages](http://s.sudre.free.fr/Software/Packages/about.html) app. If you'd like to build your own .pkg installer, just download the app, double-click on the project file, and then build and run the installer.
 
-### The manual way
-
-First, clone or download & unzip this repo to your computer, and **cd into the repo** from the terminal. (All subsequent paths that do not start with a slash are relative to the root of this repo.) Next, install crankd by running the installer in the pymacadmin directory using root privileges:
-
-```sudo pymacadmin/install-crankd.sh```
-
-Copy files from the repo to their correct locations:
-
-```
-sudo cp -R Library/Application\ Support/crankd /Library/Application\ Support/
-sudo cp Library/LaunchDaemons/com.googlecode.pymacadmin.crankd.plist /Library/LaunchDaemons/
-sudo cp Library/LaunchAgents/org.pmbuko.kerbminder.plist /Library/LaunchAgents/
-sudo cp Library/Preferences/com.googlecode.pymacadmin.crankd.plist /Library/Preferences/
-```
-
-[Download Pashua.app](http://www.bluem.net/en/mac/pashua/), mount the disk image, copy Pashua.app to the correct location, and remove the inetnet quarantine attribute:
-
-```
-sudo cp -Rp /Volumes/Pashua/Pashua.app /Library/Application\ Support/crankd/
-sudo xattr -d com.apple.quarantine /Library/Application\ Support/crankd/Pashua.app
-```
-
-Set the correct permissions:
-
-```
-sudo chown -R root:admin /Library/Application\ Support/crankd
-sudo chmod 777 /Library/Application\ Support/crankd/kmfiles
-sudo chmod 755 /Library/Application\ Support/crankd/*.py
-sudo chown -R root:wheel /Library/LaunchDaemons/com.googlecode.pymacadmin.crankd.plist
-sudo chmod 644 /Library/LaunchDaemons/com.googlecode.pymacadmin.crankd.plist
-sudo chown -R root:wheel /Library/LaunchAgents/org.pmbuko.kerbminder.plist
-sudo chmod 644 /Library/LaunchAgents/org.pmbuko.kerbminder.plist
-sudo chown -R root:wheel /Library/Preferences/com.googlecode.pymacadmin.crankd.plist
-sudo chmod 644 /Library/Preferences/com.googlecode.pymacadmin.crankd.plist
-```
-
-
-Finally, start the LaunchDaemon and LaunchAgent. (Note the lack of sudo on the second command):
-
-```
-sudo launchctl load /Library/LaunchDaemons/com.googlecode.pymacadmin.crankd.plist
-launchctl load /Library/LaunchAgents/org.pmbuko.kerbminder.plist
-```
+If you want to install manually, check the [Wiki](https://github.com/ftiff/KerbMinder2/wiki/Manual-Installation)
 
 ## ADPassMon Integration
 
 The latest release of my [ADPassMon](http://yourmacguy.wordpress.com/ADPassMon) software lets users enable/disable KerbMinder via a menu item.
+
+## What's next ?
+I want to rewrite this tool again, to use Apple's Frameworks instead of CLI tools.
+
