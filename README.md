@@ -5,7 +5,7 @@
 **KerbMinder** is a tool for Mac OS X that keeps a logged-in user's Kerberos ticket current by attempting to renew or refresh it automatically any time the network state changes. It only presents a UI if it needs the user to supply a login or a password. It is designed for users who :
 - has network-authenticated mobile accounts and often work off of corporate networks via VPN;
 - or needs to leverage Kerberos SSO without having to bind the machine to a directory.
-![KerbMinder login](installer_components/KerbMinder2_login.png "KerbMinder login dialog")
+
 ![KerbMinder dialog](installer_components/dialog.png "KerbMinder dialog")
 
 The password can be saved to the keychain so all subsequent renewals can use it. Should the saved password get out of sync with the domain — e.g. after the user changes their password — the keychain will automatically remove the old saved password and the user will be prompted to enter one.
