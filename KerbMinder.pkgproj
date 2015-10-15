@@ -1189,7 +1189,7 @@
 				<key>OVERWRITE_PERMISSIONS</key>
 				<true/>
 				<key>VERSION</key>
-				<string>2.0b2</string>
+				<string>2.0b4</string>
 			</dict>
 			<key>UUID</key>
 			<string>1DC0139D-0266-4A6C-9BDE-99F49786AC1E</string>
@@ -1209,9 +1209,9 @@
 			ZW50LVN0eWxlLVR5cGUiIGNvbnRlbnQ9InRleHQvY3NzIj4KPHRp
 			dGxlPjwvdGl0bGU+CjxtZXRhIG5hbWU9IkdlbmVyYXRvciIgY29u
 			dGVudD0iQ29jb2EgSFRNTCBXcml0ZXIiPgo8bWV0YSBuYW1lPSJD
-			b2NvYVZlcnNpb24iIGNvbnRlbnQ9IjE0MDQiPgo8c3R5bGUgdHlw
-			ZT0idGV4dC9jc3MiPgo8L3N0eWxlPgo8L2hlYWQ+Cjxib2R5Pgo8
-			L2JvZHk+CjwvaHRtbD4K
+			b2NvYVZlcnNpb24iIGNvbnRlbnQ9IjE0MDQuMTEiPgo8c3R5bGUg
+			dHlwZT0idGV4dC9jc3MiPgo8L3N0eWxlPgo8L2hlYWQ+Cjxib2R5
+			Pgo8L2JvZHk+CjwvaHRtbD4K
 			</data>
 		</dict>
 		<key>PROJECT_PRESENTATION</key>
@@ -1683,7 +1683,7 @@
 				</dict>
 			</array>
 			<key>NAME</key>
-			<string>KerbMinder.v2.0b3</string>
+			<string>KerbMinder.v2.0b4</string>
 			<key>REFERENCE_FOLDER_PATH</key>
 			<string>/Users/fti/PycharmProjects/KerbMinder2</string>
 		</dict>
