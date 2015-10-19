@@ -107,6 +107,7 @@ def login_dialog(image):
     login.type = textfield
     login.label = Login:
     login.default = login
+    login.width = 280
     login.mandatory = 1
     ''' % (image, message)
 
@@ -115,6 +116,7 @@ def login_dialog(image):
         conf += '''
             # Add a popup menu
             realm.type = popup
+            realm.width = 285
             realm.label = Domain:
             '''
         for realm in realms:
@@ -122,6 +124,7 @@ def login_dialog(image):
     except (KeyError, IOError):
         conf += '''
             realm.type = textfield
+            realm.width = 280
             realm.label = Domain:
             '''
 
@@ -130,7 +133,7 @@ def login_dialog(image):
     db.type = defaultbutton
     db.label = OK
     db.x = 0
-    db.y = 50
+    db.y = 0
 
     # Cancel button
     cb.type = cancelbutton

@@ -202,4 +202,4 @@ class TestPrincipal2(TestCase):
 
 
 if __name__ == '__main__':
-    nose.run(argv=['-s'])
+    nose.run()
