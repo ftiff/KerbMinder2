@@ -33,7 +33,9 @@ import plistlib
 
 import Pashua
 
-__author__ = 'Peter Bukowinski (pmbuko@gmail.com), Francois Levaux-Tiffreau (fti@me.com)'
+__author__ = ( 'Peter Bukowinski (pmbuko@gmail.com), '
+                'Francois Levaux-Tiffreau (fti@me.com)'
+               )
 __credits__ = ["Joe Chilcote",
                "Graham Gilbert",
                "Gary Larizza",
@@ -215,7 +217,7 @@ def exit_dialog(message, title, log):
     try:
         subprocess.check_output(['osascript', '-e',
                                  'display dialog "' + message + '" with title "' +
-                                 title + '" with icon 2 buttons {"OK"} default button 1'])
+                                 title + '" with icon caution buttons {"OK"} default button 1'])
 
     except subprocess.CalledProcessError as error:
         log_print("Error displaying exit_dialog: " + str(error))
@@ -236,12 +238,15 @@ class Principal(object):
     def __str__(self):
         return self.principal
 
+    class NotBound(Exception):
+        pass
+
 
     def get(self):
 
         try:
             self.principal = self.get_from_ad()
-        except (subprocess.CalledProcessError, ValueError):
+        except (subprocess.CalledProcessError, Principal.NotBound):
             self.principal = self.get_from_user()
 
     @staticmethod
@@ -249,20 +254,29 @@ class Principal(object):
         """Returns the Kerberos ID of the current user by searching directory services. If no
         KID is found, either the search path is incorrect or the domain is not accessible."""
 
+        try:
+            output = subprocess.check_output(['dsconfigad', '-show'])
+            if "Active Directory" in output:
+                if not g_prefs.is_kerbminder_enabled_in_adpassmon():
+                    sys.exit(1)
+                else:
+                    return Principal.get_principal_from_ad()
+            else:
+                raise Principal.NotBound("Computer is not bound.")
+
+        except (subprocess.CalledProcessError, Principal.NotBound) as error:
+            log_print(str(error))
+            raise
+
+    @staticmethod
+    def get_principal_from_ad():
+        """Returns the principal of the current user when computer is bound"""
+
         import re
 
         user_path = '/Users/' + get_current_username()
 
         try:
-            output = subprocess.check_output(['dsconfigad', '-show'])
-            log_print(output)
-            if "Active Directory" in output:
-                if not g_prefs.is_kerbminder_enabled_in_adpassmon():
-                    sys.exit(1)
-                pass
-            else:
-                raise ValueError("Computer is not bound.")
-
             output = subprocess.check_output(['dscl',
                                               '/Search',
                                               'read',
@@ -271,12 +285,14 @@ class Principal(object):
                                              stderr=subprocess.STDOUT)
             match = re.search(r'[a-zA-Z0-9+_\-\.]+@[^;]+\.[A-Z]{2,}', output, re.IGNORECASE)
             match = match.group()
+
+        except subprocess.CalledProcessError as error:
+            log_print("Can't find Principal from AD: " + str(error))
+
+        else:
             log_print('Kerberos Principal is ' + match)
             return match
 
-        except (subprocess.CalledProcessError, ValueError) as error:
-            log_print("Can't find Principal from AD: " + str(error))
-            raise
 
     def get_from_user(self):
         """Will query cache. If unavailable, will query user, then write to cache."""

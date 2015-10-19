@@ -12,6 +12,54 @@ from mock import *
 def no_credentials_found(*args, **kwargs):
     raise CalledProcessError(1, args, "klist: krb5_cc_get_principal: No credentials cache file found")
 
+
+class TestPrincipal(TestCase):
+
+    @patch('subprocess.check_output')
+    def test_ad_notbound(self, mock_check_call):
+        mock_check_call.returned_value = ""
+        nose.tools.assert_raises(Principal.NotBound, Principal.get_from_ad)
+        #mock_check_call.assert_called_with(['dsconfigad', '-show'])
+
+    @patch('KerbMinder2.g_prefs.is_kerbminder_enabled_in_adpassmon')
+    @patch('KerbMinder2.Principal.get_principal_from_ad')
+    def test_ad_bound_enabled(self, mock_get_principal_from_ad, mock_enabled):
+        #https://github.com/nens/nensbuild/blob/master/nensbuild/tests.py
+        mock_enabled.return_value = True
+        with patch('subprocess.check_output', return_value = "Active Directory TEST") as check_output:
+            Principal.get_from_ad()
+        nose.tools.ok_(mock_get_principal_from_ad.called)
+        check_output.assert_called_with(['dsconfigad', '-show'])
+
+    @patch('KerbMinder2.g_prefs.is_kerbminder_enabled_in_adpassmon')
+    @patch('KerbMinder2.Principal.get_principal_from_ad')
+    def test_ad_bound_notenabled(self, mock_get_principal_from_ad, mock_enabled):
+        #https://github.com/nens/nensbuild/blob/master/nensbuild/tests.py
+        mock_enabled.return_value = False
+        with patch('subprocess.check_output', return_value = "Active Directory TEST") as check_output:
+            nose.tools.assert_raises(SystemExit, Principal.get_from_ad)
+        check_output.assert_called_with(['dsconfigad', '-show'])
+
+    @patch('KerbMinder2.get_current_username')
+    def test_ad_bound_notenabled(self, mock_get_current_username):
+        #https://github.com/nens/nensbuild/blob/master/nensbuild/tests.py
+        mock_get_current_username.return_value = "testuser"
+
+        _return_value = 'AuthenticationAuthority:  ;ShadowHash;HASHLIST:' \
+                        '<SMB-NT,CRAM-MD5,RECOVERABLE,SALTED-SHA512-PBKDF2>  ' \
+                        ';LocalCachedUser;/Active Directory/TEST/test.com:testuser' \
+                        ':9A1F2D0C-B782-488A-80BA-CAC95AB6CAE9  ;Kerberosv5;;testuser@TEST.COM;' \
+                        'TEST.COM; AuthenticationAuthority: ;Kerberosv5;;testuser@TEST.COM;TEST.COM; ' \
+                        ';NetLogon;testuser;TEST'
+        with patch('subprocess.check_output', return_value = _return_value) as check_output:
+            nose.tools.eq_(Principal.get_principal_from_ad(), "testuser@TEST.COM")
+        # TODO: http://stackoverflow.com/questions/33214247/how-to-use-mock-any-with-assert-called-with
+        check_output.assert_called_with(['dscl',
+                                          '/Search',
+                                          'read',
+                                          '/Users/testuser',
+                                          'AuthenticationAuthority'],
+                                          stderr=ANY)
 class TestTicket(TestCase):
 
     @patch('subprocess.check_call')
@@ -133,23 +181,23 @@ class TestPrincipal2(TestCase):
         principal.__str__ = MagicMock(return_value="test@TEST.COM")
         self.assertEqual(principal, "test@TEST.COM")
 
-@nottest
-class TestPrincipal(TestCase):
-    @patch.object(Principal, 'get_from_ad')
-    def test_create(self, mock_get_from_ad, mock_output):
-        #@patch('KerbMinder2.Principal', return_value='test@TEST.COM')
-        #pr = ""
-        #pr = patch('KerbMinder2.Principal.principal', "test@TEST.COM")
-        pr = Principal()
-        mock_get_from_ad.assert_called_with()
-        print mock_output
-    @patch('KerbMinder2.Principal.get_from_ad')
-    def test_get_ad(mock_get_from_ad):
-        mock_get_from_ad.return_value = "test@TEST.COM"
-        pr = Principal()
-        self.assertEqual(pr, "test@TEST.COM")
-
-
+# @nottest
+# class TestPrincipal(TestCase):
+#     @patch.object(Principal, 'get_from_ad')
+#     def test_create(self, mock_get_from_ad, mock_output):
+#         #@patch('KerbMinder2.Principal', return_value='test@TEST.COM')
+#         #pr = ""
+#         #pr = patch('KerbMinder2.Principal.principal', "test@TEST.COM")
+#         pr = Principal()
+#         mock_get_from_ad.assert_called_with()
+#         print mock_output
+#     @patch('KerbMinder2.Principal.get_from_ad')
+#     def test_get_ad(mock_get_from_ad):
+#         mock_get_from_ad.return_value = "test@TEST.COM"
+#         pr = Principal()
+#         self.assertEqual(pr, "test@TEST.COM")
+#
+#
 
 
 
