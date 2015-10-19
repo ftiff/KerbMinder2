@@ -53,26 +53,6 @@ PLIST_PATH = "/Library/Preferences/com.github.ftiff.KerbMinder2.plist"
 ADPASSMON_PLIST_PATH = os.path.expanduser('~/Library/Preferences/org.pmbuko.ADPassMon.plist')
 
 
-class WrongPasswordError(Exception):
-    """User has entered wrong password."""
-    pass
-
-
-class PasswordExpiredError(Exception):
-    """Password is expired."""
-    pass
-
-
-class WrongUsernameError(Exception):
-    """User has entered wrong username."""
-    pass
-
-
-class RevokedError(Exception):
-    """Too many unsuccessful passwords."""
-    pass
-
-
 def get_current_username():
     """Returns the user associated with the LaunchAgent running KerbMinder.py"""
     return getpass.getuser()
@@ -247,16 +227,22 @@ def exit_dialog(message, title, log):
 
 class Principal(object):
     """login@REALM.TLD"""
-    def __init__(self):
-        self.principal = ""
+    def __init__(self, principal=None):
+        if principal is not None:
+            self.principal = principal
+        else:
+            self.principal = ""
+
+    def __str__(self):
+        return self.principal
+
+
+    def get(self):
 
         try:
             self.principal = self.get_from_ad()
         except (subprocess.CalledProcessError, ValueError):
             self.principal = self.get_from_user()
-
-    def __str__(self):
-        return self.principal
 
     @staticmethod
     def get_from_ad():
@@ -518,9 +504,45 @@ class Keychain(object):
             return False
 
 
+
+
 class Ticket(object):
-    def __init__(self):
+
+    class WrongPasswordError(Exception):
+        """User has entered wrong password."""
         pass
+
+
+    class PasswordExpiredError(Exception):
+        """Password is expired."""
+        pass
+
+
+    class WrongUsernameError(Exception):
+        """User has entered wrong username."""
+        pass
+
+
+    class RevokedError(Exception):
+        """Too many unsuccessful passwords."""
+        pass
+
+    def __init__(self):
+
+
+        self.kinit_return_exceptions = {
+            "expired": Ticket.PasswordExpiredError,
+            "incorrect": Ticket.WrongPasswordError,
+            "revoked": Ticket.RevokedError,
+            "unknown": Ticket.WrongUsernameError
+        }
+
+    def kinit_return_exception(self, _input):
+
+        if _input in self.kinit_return_exceptions:
+            raise self.kinit_return_exceptions[_input]
+        else:
+            return True
 
     @staticmethod
     def is_present():
@@ -530,32 +552,37 @@ class Ticket(object):
         """
         try:
             subprocess.check_call(['klist', '--test'])
-            log_print("Ticket is present.")
-            return True
+
         except subprocess.CalledProcessError:
             log_print("Ticket is not present.")
             return False
 
+        else:
+            log_print("Ticket is present.")
+            return True
+
     @staticmethod
     def refresh(_principal):
+        log_print("Refreshing Ticket…")
         try:
-            log_print("Refreshing Ticket…")
-            domain_dig_check(_principal.get_realm())
             subprocess.check_output(['kinit', '--renew'])
-            log_print("Refreshed Ticket.")
-            return True
+
         except subprocess.CalledProcessError:
             log_print("Can't refresh ticket.")
             raise
 
-    @staticmethod
-    def kinit(principal, keychain, retry=False):
+        else:
+            log_print("Refreshed Ticket.")
+            return True
+
+
+    def kinit(self, principal, keychain, retry=False):
         """Calls kinit to initialize the Kerberos Ticket. Will use
         keychain if available, otherwise will ask user the password,
         optionally saving it to the keychain.
         """
 
-        (password, save) = ("", 0)
+        #(password, save) = ("", 0)
 
         try:
             if keychain.exists(principal):
@@ -583,36 +610,29 @@ class Ticket(object):
                 _renew1.stdout.close()
                 out = _renew2.communicate()[1]
 
-            if "expired" in out:
-                raise PasswordExpiredError("Password Expired")
+            self.kinit_return_exception(out)
 
-            if "incorrect" in out:
-                raise WrongPasswordError("Wrong password")
+        except (subprocess.CalledProcessError,
+                Ticket.PasswordExpiredError,
+                Ticket.WrongPasswordError,
+                Ticket.RevokedError,
+                Ticket.WrongUsernameError) as error:
+            log_print("Error initiating ticket: " + str(error))
+            raise
 
-            if "revoked" in out:
-                raise RevokedError("Domain account locked out.")
-
-            if "unknown" in out:
-                raise WrongUsernameError()
-
-            if save == "1":
-                keychain.store(principal, password)
+        else:
+            if 'save' in locals():
+                if save == "1":
+                    keychain.store(principal, password)
 
             log_print("Ticket initiation OK")
             return True
-
-        except (subprocess.CalledProcessError,
-                PasswordExpiredError,
-                WrongPasswordError,
-                RevokedError,
-                WrongUsernameError) as error:
-            log_print("Error initiating ticket: " + str(error))
-            raise
 
 
 def main():
     ticket = Ticket()
     principal = Principal()
+    principal.get()
     keychain = Keychain()
 
     if not domain_dig_check(principal.get_realm()):
@@ -632,7 +652,7 @@ def main():
             try:
                 ticket.kinit(principal, keychain, retry)
 
-            except WrongPasswordError:
+            except Ticket.WrongPasswordError:
                 if not retry:
                     retry = True
                     log_print("Password mismatch")
@@ -643,19 +663,19 @@ def main():
                     _log = "Twice a password error. Exiting."
                     exit_dialog(_message, _title, _log)
 
-            except PasswordExpiredError:
+            except Ticket.PasswordExpiredError:
                 _message = "Your password has expired. Please change it and retry."
                 _title = "Password expired"
                 _log = "Password is expired. Exiting."
                 exit_dialog(_message, _title, _log)
 
-            except RevokedError:
+            except Ticket.RevokedError:
                 _message = "Your domain account was locked out due to too many incorrect password attempts."
                 _title = "Account Lockout"
                 _log = "Ticket is revoked. Exiting."
                 exit_dialog(_message, _title, _log)
 
-            except WrongUsernameError:
+            except Ticket.WrongUsernameError:
                 log_print("Wrong Username")
                 principal.delete()
                 principal.get_from_user()
