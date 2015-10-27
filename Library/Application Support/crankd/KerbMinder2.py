@@ -26,14 +26,15 @@ from __future__ import print_function
 
 import sys
 import subprocess
-import getpass
 import syslog
 import os
 import plistlib
 
 import Pashua
 
-__author__ = 'Peter Bukowinski (pmbuko@gmail.com), Francois Levaux-Tiffreau (fti@me.com)'
+__author__ = ( 'Peter Bukowinski (pmbuko@gmail.com), '
+                'Francois Levaux-Tiffreau (fti@me.com)'
+               )
 __credits__ = ["Joe Chilcote",
                "Graham Gilbert",
                "Gary Larizza",
@@ -51,31 +52,6 @@ PATH_ROOT = os.path.dirname(os.path.realpath(__file__))
 PATH_USER = os.path.expanduser('~/Library/Application Support/crankd')
 PLIST_PATH = "/Library/Preferences/com.github.ftiff.KerbMinder2.plist"
 ADPASSMON_PLIST_PATH = os.path.expanduser('~/Library/Preferences/org.pmbuko.ADPassMon.plist')
-
-
-class WrongPasswordError(Exception):
-    """User has entered wrong password."""
-    pass
-
-
-class PasswordExpiredError(Exception):
-    """Password is expired."""
-    pass
-
-
-class WrongUsernameError(Exception):
-    """User has entered wrong username."""
-    pass
-
-
-class RevokedError(Exception):
-    """Too many unsuccessful passwords."""
-    pass
-
-
-def get_current_username():
-    """Returns the user associated with the LaunchAgent running KerbMinder.py"""
-    return getpass.getuser()
 
 
 def log_print(message, _log=True, _print=True):
@@ -100,7 +76,7 @@ def domain_dig_check(domain):
     return True
 
 
-def login_dialog(image):
+def login_dialog(image): # pragma: no cover
     """Displays login and password prompt using Pashua. Returns login as string."""
 
     message = 'Computer is not bound to AD. Enter your Kerberos credentials:'
@@ -125,6 +101,7 @@ def login_dialog(image):
     login.type = textfield
     login.label = Login:
     login.default = login
+    login.width = 280
     login.mandatory = 1
     ''' % (image, message)
 
@@ -133,6 +110,7 @@ def login_dialog(image):
         conf += '''
             # Add a popup menu
             realm.type = popup
+            realm.width = 285
             realm.label = Domain:
             '''
         for realm in realms:
@@ -140,6 +118,7 @@ def login_dialog(image):
     except (KeyError, IOError):
         conf += '''
             realm.type = textfield
+            realm.width = 280
             realm.label = Domain:
             '''
 
@@ -148,7 +127,7 @@ def login_dialog(image):
     db.type = defaultbutton
     db.label = OK
     db.x = 0
-    db.y = 50
+    db.y = 0
 
     # Cancel button
     cb.type = cancelbutton
@@ -166,7 +145,7 @@ def login_dialog(image):
     return dialog['login'] + '@' + dialog['realm'].upper()
 
 
-def pass_dialog(kid, image, retry=False):
+def pass_dialog(kid, image, retry=False): # pragma: no cover
     """Displays password prompt using Pashua.
     Returns password as string and save checkbox state as 0 or 1.
     """
@@ -235,48 +214,69 @@ def exit_dialog(message, title, log):
     try:
         subprocess.check_output(['osascript', '-e',
                                  'display dialog "' + message + '" with title "' +
-                                 title + '" with icon 2 buttons {"OK"} default button 1'])
+                                 title + '" with icon caution buttons {"OK"} default button 1'])
 
     except subprocess.CalledProcessError as error:
         log_print("Error displaying exit_dialog: " + str(error))
 
-    finally:
+    else:
         log_print(log)
+
+    finally:
         sys.exit(1)
 
 
 class Principal(object):
     """login@REALM.TLD"""
-    def __init__(self):
-        self.principal = ""
+    def __init__(self, principal=None):
+        if principal is not None:
+            self.principal = principal
+        else:
+            self.principal = ""
+
+    #def __str__(self):
+    #    return self.principal
+
+    class NotBound(Exception):
+        pass
+
+
+    def get(self):
 
         try:
             self.principal = self.get_from_ad()
-        except (subprocess.CalledProcessError, ValueError):
+        except (subprocess.CalledProcessError, Principal.NotBound):
             self.principal = self.get_from_user()
-
-    def __str__(self):
-        return self.principal
 
     @staticmethod
     def get_from_ad():
         """Returns the Kerberos ID of the current user by searching directory services. If no
         KID is found, either the search path is incorrect or the domain is not accessible."""
 
-        import re
-
-        user_path = '/Users/' + get_current_username()
-
         try:
             output = subprocess.check_output(['dsconfigad', '-show'])
-            log_print(output)
             if "Active Directory" in output:
                 if not g_prefs.is_kerbminder_enabled_in_adpassmon():
                     sys.exit(1)
-                pass
+                else:
+                    return Principal.get_principal_from_ad()
             else:
-                raise ValueError("Computer is not bound.")
+                raise Principal.NotBound("Computer is not bound.")
 
+        except (subprocess.CalledProcessError, Principal.NotBound) as error:
+            log_print(str(error))
+            raise
+
+    @staticmethod
+    def get_principal_from_ad():
+        """Returns the principal of the current user when computer is bound"""
+
+        import re
+        import getpass
+
+        user_path = '/Users/' + getpass.getuser()
+
+        try:
             output = subprocess.check_output(['dscl',
                                               '/Search',
                                               'read',
@@ -285,12 +285,14 @@ class Principal(object):
                                              stderr=subprocess.STDOUT)
             match = re.search(r'[a-zA-Z0-9+_\-\.]+@[^;]+\.[A-Z]{2,}', output, re.IGNORECASE)
             match = match.group()
+
+        except subprocess.CalledProcessError as error:
+            log_print("Can't find Principal from AD: " + str(error))
+
+        else:
             log_print('Kerberos Principal is ' + match)
             return match
 
-        except (subprocess.CalledProcessError, ValueError) as error:
-            log_print("Can't find Principal from AD: " + str(error))
-            raise
 
     def get_from_user(self):
         """Will query cache. If unavailable, will query user, then write to cache."""
@@ -518,9 +520,45 @@ class Keychain(object):
             return False
 
 
+
+
 class Ticket(object):
-    def __init__(self):
+
+    class WrongPasswordError(Exception):
+        """User has entered wrong password."""
         pass
+
+
+    class PasswordExpiredError(Exception):
+        """Password is expired."""
+        pass
+
+
+    class WrongUsernameError(Exception):
+        """User has entered wrong username."""
+        pass
+
+
+    class RevokedError(Exception):
+        """Too many unsuccessful passwords."""
+        pass
+
+    def __init__(self):
+
+
+        self.kinit_return_exceptions = {
+            "expired": Ticket.PasswordExpiredError,
+            "incorrect": Ticket.WrongPasswordError,
+            "revoked": Ticket.RevokedError,
+            "unknown": Ticket.WrongUsernameError
+        }
+
+    def kinit_return_exception(self, _input):
+
+        if _input in self.kinit_return_exceptions:
+            raise self.kinit_return_exceptions[_input]
+        else:
+            return True
 
     @staticmethod
     def is_present():
@@ -530,32 +568,37 @@ class Ticket(object):
         """
         try:
             subprocess.check_call(['klist', '--test'])
-            log_print("Ticket is present.")
-            return True
+
         except subprocess.CalledProcessError:
             log_print("Ticket is not present.")
             return False
 
+        else:
+            log_print("Ticket is present.")
+            return True
+
     @staticmethod
     def refresh(_principal):
+        log_print("Refreshing Ticket…")
         try:
-            log_print("Refreshing Ticket…")
-            domain_dig_check(_principal.get_realm())
             subprocess.check_output(['kinit', '--renew'])
-            log_print("Refreshed Ticket.")
-            return True
+
         except subprocess.CalledProcessError:
             log_print("Can't refresh ticket.")
             raise
 
-    @staticmethod
-    def kinit(principal, keychain, retry=False):
+        else:
+            log_print("Refreshed Ticket.")
+            return True
+
+
+    def kinit(self, principal, keychain, retry=False):
         """Calls kinit to initialize the Kerberos Ticket. Will use
         keychain if available, otherwise will ask user the password,
         optionally saving it to the keychain.
         """
 
-        (password, save) = ("", 0)
+        #(password, save) = ("", 0)
 
         try:
             if keychain.exists(principal):
@@ -583,36 +626,29 @@ class Ticket(object):
                 _renew1.stdout.close()
                 out = _renew2.communicate()[1]
 
-            if "expired" in out:
-                raise PasswordExpiredError("Password Expired")
+            self.kinit_return_exception(out)
 
-            if "incorrect" in out:
-                raise WrongPasswordError("Wrong password")
+        except (subprocess.CalledProcessError,
+                Ticket.PasswordExpiredError,
+                Ticket.WrongPasswordError,
+                Ticket.RevokedError,
+                Ticket.WrongUsernameError) as error:
+            log_print("Error initiating ticket: " + str(error))
+            raise
 
-            if "revoked" in out:
-                raise RevokedError("Domain account locked out.")
-
-            if "unknown" in out:
-                raise WrongUsernameError()
-
-            if save == "1":
-                keychain.store(principal, password)
+        else:
+            if 'save' in locals():
+                if save == "1":
+                    keychain.store(principal, password)
 
             log_print("Ticket initiation OK")
             return True
-
-        except (subprocess.CalledProcessError,
-                PasswordExpiredError,
-                WrongPasswordError,
-                RevokedError,
-                WrongUsernameError) as error:
-            log_print("Error initiating ticket: " + str(error))
-            raise
 
 
 def main():
     ticket = Ticket()
     principal = Principal()
+    principal.get()
     keychain = Keychain()
 
     if not domain_dig_check(principal.get_realm()):
@@ -632,7 +668,7 @@ def main():
             try:
                 ticket.kinit(principal, keychain, retry)
 
-            except WrongPasswordError:
+            except Ticket.WrongPasswordError:
                 if not retry:
                     retry = True
                     log_print("Password mismatch")
@@ -643,19 +679,19 @@ def main():
                     _log = "Twice a password error. Exiting."
                     exit_dialog(_message, _title, _log)
 
-            except PasswordExpiredError:
+            except Ticket.PasswordExpiredError:
                 _message = "Your password has expired. Please change it and retry."
                 _title = "Password expired"
                 _log = "Password is expired. Exiting."
                 exit_dialog(_message, _title, _log)
 
-            except RevokedError:
+            except Ticket.RevokedError:
                 _message = "Your domain account was locked out due to too many incorrect password attempts."
                 _title = "Account Lockout"
                 _log = "Ticket is revoked. Exiting."
                 exit_dialog(_message, _title, _log)
 
-            except WrongUsernameError:
+            except Ticket.WrongUsernameError:
                 log_print("Wrong Username")
                 principal.delete()
                 principal.get_from_user()
