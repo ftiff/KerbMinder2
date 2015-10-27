@@ -27,23 +27,12 @@ class TestPrincipal(TestCase):
         nose.tools.assert_raises(Principal.NotBound, Principal.get_from_ad)
         #mock_check_call.assert_called_with(['dsconfigad', '-show'])
 
-    @patch('KerbMinder2.g_prefs.is_kerbminder_enabled_in_adpassmon')
     @patch('KerbMinder2.Principal.get_principal_from_ad')
-    def test_ad_bound_enabled(self, mock_get_principal_from_ad, mock_enabled):
+    def test_ad_bound(self, mock_get_principal_from_ad):
         #https://github.com/nens/nensbuild/blob/master/nensbuild/tests.py
-        mock_enabled.return_value = True
         with patch('subprocess.check_output', return_value = "Active Directory TEST") as check_output:
             Principal.get_from_ad()
         nose.tools.ok_(mock_get_principal_from_ad.called)
-        check_output.assert_called_with(['dsconfigad', '-show'])
-
-    @patch('KerbMinder2.g_prefs.is_kerbminder_enabled_in_adpassmon')
-    @patch('KerbMinder2.Principal.get_principal_from_ad')
-    def test_ad_bound_notenabled(self, mock_get_principal_from_ad, mock_enabled):
-        #https://github.com/nens/nensbuild/blob/master/nensbuild/tests.py
-        mock_enabled.return_value = False
-        with patch('subprocess.check_output', return_value = "Active Directory TEST") as check_output:
-            nose.tools.assert_raises(SystemExit, Principal.get_from_ad)
         check_output.assert_called_with(['dsconfigad', '-show'])
 
     @patch('getpass.getuser')
@@ -67,8 +56,6 @@ class TestPrincipal(TestCase):
                       'read',
                       '/Users/testuser',
                       'AuthenticationAuthority'],))
-
-
 
 class TestGlobal(TestCase):
 

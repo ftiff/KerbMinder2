@@ -256,10 +256,7 @@ class Principal(object):
         try:
             output = subprocess.check_output(['dsconfigad', '-show'])
             if "Active Directory" in output:
-                if not g_prefs.is_kerbminder_enabled_in_adpassmon():
-                    sys.exit(1)
-                else:
-                    return Principal.get_principal_from_ad()
+                return Principal.get_principal_from_ad()
             else:
                 raise Principal.NotBound("Computer is not bound.")
 
@@ -415,30 +412,6 @@ class Preferences(object):
             return prefs["principal_path"]
         except (IOError, KeyError):
             return default_principal_path
-
-    @staticmethod
-    def is_kerbminder_enabled_in_adpassmon():
-        """Check if ADPassMon has KerbMinder disabled
-        Will return true if cannot find ADPassMon plist or if it is enabled.
-        """
-        if not os.path.isfile(ADPASSMON_PLIST_PATH):
-            log_print("ADPassMon: Can't find settings -- returning ENABLED")
-            return True
-        else:
-            try:
-                subprocess.call(['plutil', '-convert', 'xml1', ADPASSMON_PLIST_PATH])
-                settings = plistlib.readPlist(ADPASSMON_PLIST_PATH)
-                enabled = settings['enableKerbMinder']
-            except subprocess.CalledProcessError:
-                log_print("ADPassMon: Couldn't convert plist to XML -- Returning ENABLED")
-                return True
-            except KeyError:
-                log_print("ADPassMon: Can't find key for KerbMinder -- Returning ENABLED")
-                return True
-
-            if not enabled:
-                log_print("ADPassMon: KerbMinder is disabled in ADPassMon settings")
-                return False
 
     def set_image_path(self, image_path):
         raise NotImplementedError
