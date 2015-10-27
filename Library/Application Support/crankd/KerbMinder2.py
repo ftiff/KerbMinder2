@@ -234,8 +234,8 @@ class Principal(object):
         else:
             self.principal = ""
 
-    #def __str__(self):
-    #    return self.principal
+    def __str__(self):
+        return self.principal
 
     class NotBound(Exception):
         pass
@@ -577,13 +577,10 @@ class Ticket(object):
             if keychain.exists(principal):
                 log_print('Initiating ticket with Keychain')
 
-                _renew = subprocess.Popen(['kinit',
+                out = subprocess.check_output(['kinit',
                                            '-l', '10h',
                                            '--renewable',
-                                           str(principal)],
-                                          stderr=subprocess.PIPE,
-                                          stdout=subprocess.PIPE)
-                out = _renew.communicate()[1]
+                                           str(principal)])
             else:
                 log_print('Initiating ticket with password')
                 (password, save) = pass_dialog(principal, g_prefs.get_image_path(), retry)

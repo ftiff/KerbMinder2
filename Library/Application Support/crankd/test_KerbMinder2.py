@@ -180,10 +180,10 @@ class TestTicket(TestCase):
         nose.tools.ok_(returned, "Ticket should be present")
 
     @patch('KerbMinder2.Keychain.exists')
-    @patch('subprocess.Popen')
-    def test_ticket_kinit_with_keychain_ok(self, mock_popen, mock_keychain_exists):
+    @patch('subprocess.check_output')
+    def test_ticket_kinit_with_keychain_ok(self, mock_check_output, mock_keychain_exists):
         mock_keychain_exists.return_value = True
-        mock_popen.communicate.return_value = "OK"
+        mock_check_output.return_value = "OK"
         _principal = Principal()
         _keychain = Keychain()
         _ticket = Ticket()
@@ -191,11 +191,11 @@ class TestTicket(TestCase):
         nose.tools.ok_(returned, "NOT OK")
 
     @patch('KerbMinder2.Keychain.exists')
-    @patch('subprocess.Popen')
-    def ticket_kinit_with_keychain_custom(self, _error, _exception, mock_popen, mock_keychain_exists):
+    @patch('subprocess.check_output')
+    def ticket_kinit_with_keychain_custom(self, _error, _exception, mock_check_output, mock_keychain_exists):
         # http://paver.googlecode.com/svn@88/trunk/paver/tests/test_easy.py
         mock_keychain_exists.return_value = True
-        mock_popen.return_value.communicate.return_value = (None, _error)
+        mock_check_output.return_value = _error
         _principal = Principal()
         _keychain = Keychain()
         _ticket = Ticket()
