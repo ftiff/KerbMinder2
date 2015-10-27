@@ -51,7 +51,6 @@ __status__ = "Development"
 PATH_ROOT = os.path.dirname(os.path.realpath(__file__))
 PATH_USER = os.path.expanduser('~/Library/Application Support/crankd')
 PLIST_PATH = "/Library/Preferences/com.github.ftiff.KerbMinder2.plist"
-ADPASSMON_PLIST_PATH = os.path.expanduser('~/Library/Preferences/org.pmbuko.ADPassMon.plist')
 
 
 def log_print(message, _log=True, _print=True):
