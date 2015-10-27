@@ -26,7 +26,6 @@ from __future__ import print_function
 
 import sys
 import subprocess
-import getpass
 import syslog
 import os
 import plistlib
@@ -55,11 +54,6 @@ PLIST_PATH = "/Library/Preferences/com.github.ftiff.KerbMinder2.plist"
 ADPASSMON_PLIST_PATH = os.path.expanduser('~/Library/Preferences/org.pmbuko.ADPassMon.plist')
 
 
-def get_current_username():
-    """Returns the user associated with the LaunchAgent running KerbMinder.py"""
-    return getpass.getuser()
-
-
 def log_print(message, _log=True, _print=True):
     """Logs a message and prints it to stdout.
     Optionally disable either logging or stdout.
@@ -82,7 +76,7 @@ def domain_dig_check(domain):
     return True
 
 
-def login_dialog(image):
+def login_dialog(image): # pragma: no cover
     """Displays login and password prompt using Pashua. Returns login as string."""
 
     message = 'Computer is not bound to AD. Enter your Kerberos credentials:'
@@ -151,7 +145,7 @@ def login_dialog(image):
     return dialog['login'] + '@' + dialog['realm'].upper()
 
 
-def pass_dialog(kid, image, retry=False):
+def pass_dialog(kid, image, retry=False): # pragma: no cover
     """Displays password prompt using Pashua.
     Returns password as string and save checkbox state as 0 or 1.
     """
@@ -225,8 +219,10 @@ def exit_dialog(message, title, log):
     except subprocess.CalledProcessError as error:
         log_print("Error displaying exit_dialog: " + str(error))
 
-    finally:
+    else:
         log_print(log)
+
+    finally:
         sys.exit(1)
 
 
@@ -238,8 +234,8 @@ class Principal(object):
         else:
             self.principal = ""
 
-    def __str__(self):
-        return self.principal
+    #def __str__(self):
+    #    return self.principal
 
     class NotBound(Exception):
         pass
@@ -276,8 +272,9 @@ class Principal(object):
         """Returns the principal of the current user when computer is bound"""
 
         import re
+        import getpass
 
-        user_path = '/Users/' + get_current_username()
+        user_path = '/Users/' + getpass.getuser()
 
         try:
             output = subprocess.check_output(['dscl',

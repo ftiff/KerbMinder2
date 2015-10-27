@@ -15,6 +15,12 @@ def no_credentials_found(*args, **kwargs):
 
 class TestPrincipal(TestCase):
 
+    # TODO: ce machin doit marcher demain
+    # def test_get_ok(self):
+    #     principal = Principal()
+    #     with patch('KerbMinder2.Principal.get_from_ad', return_value="testuser@TEST.COM") as get_from_ad:
+    #         nose.tools.eq_(principal.get(), "testuser@TEST.COM")
+
     @patch('subprocess.check_output')
     def test_ad_notbound(self, mock_check_call):
         mock_check_call.returned_value = ""
@@ -40,10 +46,11 @@ class TestPrincipal(TestCase):
             nose.tools.assert_raises(SystemExit, Principal.get_from_ad)
         check_output.assert_called_with(['dsconfigad', '-show'])
 
-    @patch('KerbMinder2.get_current_username')
-    def test_ad_bound_notenabled(self, mock_get_current_username):
-        #https://github.com/nens/nensbuild/blob/master/nensbuild/tests.py
-        mock_get_current_username.return_value = "testuser"
+    @patch('getpass.getuser')
+    def test_ad_bound_notenabled(self, mock_getpass_getuser):
+        # https://github.com/nens/nensbuild/blob/master/nensbuild/tests.py
+        # http://stackoverflow.com/questions/33214247/how-to-use-mock-any-with-assert-called-with
+        mock_getpass_getuser.return_value = "testuser"
 
         _return_value = 'AuthenticationAuthority:  ;ShadowHash;HASHLIST:' \
                         '<SMB-NT,CRAM-MD5,RECOVERABLE,SALTED-SHA512-PBKDF2>  ' \
@@ -53,13 +60,90 @@ class TestPrincipal(TestCase):
                         ';NetLogon;testuser;TEST'
         with patch('subprocess.check_output', return_value = _return_value) as check_output:
             nose.tools.eq_(Principal.get_principal_from_ad(), "testuser@TEST.COM")
-        # TODO: http://stackoverflow.com/questions/33214247/how-to-use-mock-any-with-assert-called-with
-        check_output.assert_called_with(['dscl',
-                                          '/Search',
-                                          'read',
-                                          '/Users/testuser',
-                                          'AuthenticationAuthority'],
-                                          stderr=ANY)
+            _, args, _ = check_output.mock_calls[0]
+
+        nose.tools.eq_(args, (['dscl',
+                      '/Search',
+                      'read',
+                      '/Users/testuser',
+                      'AuthenticationAuthority'],))
+
+
+
+class TestGlobal(TestCase):
+
+    def test_domain_dig_check_notok(self):
+        _return_value = """
+; <<>> DiG 9.8.3-P1 <<>> -t srv _ldap._tcp.test.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 696
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;_ldap._tcp.test.com.	IN	SRV
+
+;; AUTHORITY SECTION:
+.			10800	IN	SOA	a.root-servers.net. nstld.verisign-grs.com. 2015101900 1800 900 604800 86400
+
+;; Query time: 21 msec
+;; SERVER: 10.0.0.2#53(10.0.0.2)
+;; WHEN: Mon Oct 17 11:20:54 2015
+"""
+        with patch('subprocess.check_output', return_value = _return_value) as check_output:
+            nose.tools.assert_raises(SystemExit, domain_dig_check, "TEST.COM")
+        check_output.assert_called_with(['dig', '-t', 'srv', '_ldap._tcp.TEST.COM'])
+
+    def test_domain_dig_check_ok(self):
+        _return_value = """
+;; Truncated, retrying in TCP mode.
+
+; <<>> DiG 9.8.3-P1 <<>> -t srv _ldap._tcp.test.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 616
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 2, ADDITIONAL: 2
+
+;; QUESTION SECTION:
+;_ldap._tcp.test.com.	IN	SRV
+
+;; ANSWER SECTION:
+_ldap._tcp.test.com.	600 IN	SRV	0 100 389 ad.test.com.
+
+;; AUTHORITY SECTION:
+test.com.	1800	IN	NS	ns1.test.com.
+test.com.	1800	IN	NS	ns2.test.com.
+
+;; ADDITIONAL SECTION:
+ns1.test.com. 1200	IN A	10.0.0.1
+ns2.test.com. 1200	IN A	10.0.0.2
+
+;; Query time: 1 msec
+;; SERVER: 10.0.0.2#53(10.0.0.2)
+;; WHEN: Mon Oct 17 11:20:54 2015
+"""
+        with patch('subprocess.check_output', return_value = _return_value) as check_output:
+            nose.tools.ok_(domain_dig_check("TEST.COM"))
+        check_output.assert_called_with(['dig', '-t', 'srv', '_ldap._tcp.TEST.COM'])
+
+    def test_exit_dialog_ok(self):
+        _message = _title = _log = "test"
+        with patch('subprocess.check_output', return_value = True) as check_output:
+            nose.tools.assert_raises(SystemExit, exit_dialog, _message, _title, _log)
+        check_output.assert_called_with(['osascript', '-e',
+                                 'display dialog "' + _message + '" with title "' +
+                                 _title + '" with icon caution buttons {"OK"} default button 1'])
+
+    @patch('KerbMinder2.log_print')
+    def test_exit_dialog_fail(self, mock_log_print):
+        _message = _title = _log = "test"
+        with patch('subprocess.check_output', side_effect=subprocess.CalledProcessError(1, 'osascript', output="")) as check_output:
+            nose.tools.assert_raises(SystemExit, exit_dialog, _message, _title, _log)
+        mock_log_print.assert_called_with("Error displaying exit_dialog: Command 'osascript' returned non-zero exit status 1")
+        check_output.assert_called_with(['osascript', '-e',
+                                 'display dialog "' + _message + '" with title "' +
+                                 _title + '" with icon caution buttons {"OK"} default button 1'])
+
 class TestTicket(TestCase):
 
     @patch('subprocess.check_call')
