@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/ftiff/KerbMinder2.svg?branch=v2.0b5)](https://travis-ci.org/ftiff/KerbMinder2)
+[![codecov.io](https://codecov.io/github/ftiff/KerbMinder2/coverage.svg?branch=master)](https://codecov.io/github/ftiff/KerbMinder2?branch=master)
+
 # KerbMinder
 
 ![KerbMinder logo](installer_components/KerbMinder_logo.png "KerbMinder icon")
